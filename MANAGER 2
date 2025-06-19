@@ -1,0 +1,126 @@
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/UI }
+using { /Fortnite.com/UI }
+using { /Verse.org/Colors }
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Vehicles }
+
+gold_shop_manager := class(creative_device):
+    # Gold reward per NPC elimination
+    @editable
+    GoldPerElimination : int = 50
+
+    # NPC spawner devices to track
+    @editable
+    NpcSpawners : []npc_spawner_device = array{}
+
+    # Weapon shop buttons
+    @editable
+    WeaponShopButtons : []button_device = array{}
+
+    # Vehicle shop buttons
+    @editable
+    VehicleShopButtons : []button_device = array{}
+
+    # Weapon granters
+    @editable
+    WeaponGranters : []item_granter_device = array{}
+
+    # Vehicle spawners
+    @editable
+    VehicleSpawner : []vehicle_spawner_sports_car_device = array{}
+
+    # Gold cost for each weapon
+    @editable
+    WeaponCosts : []int = array{}
+
+    # Gold cost for each vehicle
+    @editable
+    VehicleCosts : []int = array{}
+
+    # Track player gold amounts
+    var PlayerGold : [player]int = map{}
+
+    # Track player HUD widgets
+    var PlayerGoldWidgets : [player]text_block = map{}
+
+    OnBegin<override>()<suspends> : void =
+        # Subscribe to NPC spawner elimination events
+        for (Spawner : NpcSpawners):
+            Spawner.EliminatedEvent.Subscribe(OnNpcEliminated)
+
+        # Subscribe to vehicle spawn events
+        for (Spawner : VehicleSpawner):
+            Spawner.SpawnedEvent.Subscribe(OnVehicleSpawned)
+
+        # Setup shop buttons
+        SetupShopButtons()
+
+        # Initialize HUD for all current players
+        for (Player : GetPlayspace().GetPlayers()):
+            InitializePlayerHUD(Player)
+
+        # Subscribe to new players joining
+        GetPlayspace().PlayerAddedEvent().Subscribe(InitializePlayerHUD)
+
+    # Initialize HUD for a player
+    InitializePlayerHUD(Player : player) : void =
+        if (PlayerUI := GetPlayerUI[Player]):
+            GoldWidget := text_block{
+                DefaultText := StringToMessage("Gold: 0")
+                DefaultTextColor := NamedColors.Yellow
+                DefaultTextOpacity := {_X := 1.0}
+                DefaultJustification := text_justification.Left
+            }
+            PlayerUI.AddWidget(GoldWidget)
+            if (set PlayerGoldWidgets[Player] = GoldWidget):
+                UpdateGoldHUD(Player)
+
+    # Update the gold HUD for a player
+    UpdateGoldHUD(Player : player) : void =
+        if (GoldWidget := PlayerGoldWidgets[Player], Gold := PlayerGold[Player]):
+            GoldWidget.SetText(StringToMessage("Gold: {Gold}"))
+
+    # Helper to convert string to message
+    StringToMessage<localizes>(InString : string) : message = "{InString}"
+
+    # Add gold to player's balance and update HUD
+    AddGold(Player : player, Amount : int) : void =
+        var CurrentGold : int = 0
+        if (ExistingGold := PlayerGold[Player]):
+            set CurrentGold = ExistingGold
+        if (set PlayerGold[Player] = CurrentGold + Amount):
+            UpdateGoldHUD(Player)
+
+    # Deduct gold from player and update HUD
+    DeductGold(Player : player, Amount : int) : void =
+        if (CurrentGold := PlayerGold[Player]):
+            if (set PlayerGold[Player] = CurrentGold - Amount):
+                UpdateGoldHUD(Player)
+
+    # Handler for NPC elimination
+    OnNpcEliminated(Result : device_ai_interaction_result) : void =
+        if (Agent := Result.Source?, Player := player[Agent]):
+            AddGold(Player, GoldPerElimination)
+
+    # Handler for vehicle spawn
+    OnVehicleSpawned(Vehicle : fort_vehicle) : void =
+        Print("Vehicle spawned")
+
+    # Setup shop button subscriptions
+    SetupShopButtons() : void =
+        for (Button : WeaponShopButtons):
+            Button.InteractedWithEvent.Subscribe(OnWeaponShopButtonPressed)
+        for (Button : VehicleShopButtons):
+            Button.InteractedWithEvent.Subscribe(OnVehicleShopButtonPressed)
+
+    # Handler for weapon shop button
+    OnWeaponShopButtonPressed(Agent : agent) : void =
+        if (Player := player[Agent]):
+            Print("Weapon shop button pressed")
+
+    # Handler for vehicle shop button
+    OnVehicleShopButtonPressed(Agent : agent) : void =
+        if (Player := player[Agent]):
+            Print("Vehicle shop button pressed")
