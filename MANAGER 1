@@ -1,0 +1,102 @@
+using { /Fortnite.com/Devices }
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Game }
+using { /Verse.org/Simulation }
+ 
+# Device to manage gold rewards and purchases
+gold_shop_manager := class(creative_device):
+    # Gold reward per NPC elimination
+    @editable
+    GoldPerElimination : int = 50
+ 
+    # Weapon shop buttons
+    @editable
+    WeaponShopButtons : []conditional_button_device = array{}
+ 
+    # Vehicle shop buttons
+    @editable
+    VehicleShopButtons : []conditional_button_device = array{}
+ 
+    # Weapon granters
+    @editable
+    WeaponGranters : []item_granter_device = array{}
+ 
+    # Vehicle spawners
+    @editable
+    VehicleSpawner : []vehicle_spawner_sports_car_device = array{}
+ 
+    # Gold cost for each weapon
+    @editable
+    WeaponCosts : []int = array{}
+ 
+    # Gold cost for each vehicle
+    @editable
+    VehicleCosts : []int = array{}
+ 
+    # Track player gold amounts
+    var PlayerGold : [player]int = map{}
+ 
+    OnBegin<override>()<suspends> : void =
+        # Subscribe to NPC eliminations
+        for (Character : GetPlayspace().GetParticipants()):
+            if (FortChar := Character.GetFortCharacter[]):
+                FortChar.EliminatedEvent().Subscribe(OnNPCEliminated)
+ 
+        # Setup shop buttons
+        SetupShopButtons()
+ 
+    # Award gold when NPC is eliminated
+    OnNPCEliminated(Result : elimination_result) : void =
+        if (Eliminator := Result.EliminatingCharacter?, Player := player[Eliminator.GetAgent[]]):
+            AddGold(Player, GoldPerElimination)
+ 
+    # Add gold to player's balance
+    AddGold(Player : player, Amount : int) : void =
+        var CurrentGold : int = 0
+        if (ExistingGold := PlayerGold[Player]):
+            set CurrentGold = ExistingGold
+        if (set PlayerGold[Player] = CurrentGold + Amount):
+            Print("Player now has {CurrentGold + Amount} gold")
+ 
+    # Setup shop button interactions
+    SetupShopButtons() : void =
+        # Setup weapon shop buttons
+        for (Index -> Button : WeaponShopButtons):
+            Button.ActivatedEvent.Subscribe(HandleWeaponPurchase)
+ 
+        # Setup vehicle shop buttons
+        for (Index -> Button : VehicleShopButtons):
+            Button.ActivatedEvent.Subscribe(HandleVehiclePurchase)
+ 
+    # Handle weapon purchases
+    HandleWeaponPurchase(Agent : agent) : void =
+        if (Player := player[Agent], ButtonIndex := GetButtonIndex[Agent, WeaponShopButtons]):
+            if (Cost := WeaponCosts[ButtonIndex], Granter := WeaponGranters[ButtonIndex]):
+                if (CanAfford[Player, Cost]):
+                    DeductGold(Player, Cost)
+                    Granter.GrantItem(Agent)
+ 
+    # Handle vehicle purchases
+    HandleVehiclePurchase(Agent : agent) : void =
+        if (Player := player[Agent], ButtonIndex := GetButtonIndex[Agent, VehicleShopButtons]):
+            if (Cost := VehicleCosts[ButtonIndex], Spawner := VehicleSpawner[ButtonIndex]):
+                if (CanAfford[Player, Cost]):
+                    DeductGold(Player, Cost)
+                    Spawner.Enable()
+ 
+    # Check if player can afford purchase
+    CanAfford(Player : player, Cost : int)<decides><transacts> : void =
+        if (Gold := PlayerGold[Player]):
+            Gold >= Cost
+ 
+    # Deduct gold from player
+    DeductGold(Player : player, Amount : int) : void =
+        if (CurrentGold := PlayerGold[Player]):
+            if (set PlayerGold[Player] = CurrentGold - Amount):
+                Print("Deducted {Amount} gold from player")
+ 
+    # Helper to find button index
+    GetButtonIndex(Agent : agent, Buttons : []conditional_button_device)<decides><transacts> : int =
+        for (Index -> Button : Buttons):
+            Index
+        0 # Default return if not found# fill this file with your verse-script
