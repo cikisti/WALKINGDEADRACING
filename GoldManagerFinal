@@ -1,0 +1,276 @@
+using { /Fortnite.com/Devices }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/UI }
+using { /Fortnite.com/UI }
+using { /Verse.org/Colors }
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Vehicles }
+using { /UnrealEngine.com/Temporary/SpatialMath}
+
+
+gold_shop_manager := class(creative_device):
+    # Gold reward per NPC elimination
+    @editable
+    GoldPerElimination : int = 300
+
+
+    # NPC spawner devices to track
+    @editable
+    NpcSpawners : []npc_spawner_device = array{}
+
+
+    # Weapon shop buttons
+    @editable
+    WeaponShopButtons : []button_device = array{}
+
+	var PlayerElimWidgets : [player]text_block = map{}
+    var PlayerElimCounts : [player]int = map{}
+
+    # Vehicle shop buttons
+    @editable
+    VehicleShopButtons : []button_device = array{}
+
+    @editable
+    HudMessageNoMoney : trigger_device = trigger_device{}
+
+    @editable
+    NPCEliminatedAudio : audio_player_device = audio_player_device{}
+
+
+    # Weapon granters
+    @editable
+    WeaponGranters : []item_granter_device = array{}
+
+
+    # Vehicle spawners
+    @editable
+    VehicleSpawner : []vehicle_spawner_sports_car_device = array{}
+
+
+    # Gold cost for each weapon
+    @editable
+    WeaponCosts : []int = array{}
+
+
+    # Gold cost for each vehicle
+    @editable
+    VehicleCosts : []int = array{}
+
+
+    # Track player gold amounts
+    var PlayerGold : [player]int = map{}
+
+
+    # Track player HUD widgets
+    var PlayerGoldWidgets : [player]text_block = map{}
+
+
+    OnBegin<override>()<suspends> : void =
+        # Subscribe to NPC spawner elimination events
+        for (Spawner : NpcSpawners):
+            Spawner.EliminatedEvent.Subscribe(OnNpcEliminated)
+
+        # Setup shop buttons
+        SetupShopButtons()
+
+
+        # Initialize HUD for all current players
+        for (Player : GetPlayspace().GetPlayers()):
+            InitializePlayerHUD(Player)
+
+
+        # Subscribe to new players joining
+        GetPlayspace().PlayerAddedEvent().Subscribe(InitializePlayerHUD)
+
+
+    SetupShopButtons() : void =
+        for (Index -> Button : WeaponShopButtons):
+            Button.InteractedWithEvent.Subscribe(OnWeaponShopButtonPressed)
+
+
+        for (Index -> Button : VehicleShopButtons):
+            Button.InteractedWithEvent.Subscribe(OnVehicleShopButtonPressed)
+       
+    # Initialize HUD for a player
+    InitializePlayerHUD(Player : player) : void =
+        if (PlayerUI := GetPlayerUI[Player]):
+            GoldWidget := text_block{
+                DefaultText := StringToMessage("Ca$h: 0$")
+                DefaultTextColor := NamedColors.Green
+                DefaultShadowOpacity := 1.0
+                DefaultShadowOffset := option{vector2{X := 1.0, Y := 1.0}}
+                DefaultTextOpacity := {_X := 1.0}
+                DefaultJustification := text_justification.Left
+            }
+            PlayerUI.AddWidget(GoldWidget)
+            if (set PlayerGoldWidgets[Player] = GoldWidget):
+                UpdateGoldHUD(Player)
+            GoldIconWidget := texture_block{
+                DefaultImage := GoldIcon
+            }
+            PlayerUI.AddWidget(GoldWidget)
+                if (set PlayerGoldWidgets[Player] = GoldWidget):
+                    UpdateGoldHUD(Player)
+                WalkerIconWidget := texture_block{
+                    DefaultImage := WalkerIcon
+            }
+    
+            ElimWidget := text_block{
+                DefaultText := StringToMessage("Walker$ Met: 0")
+                DefaultTextColor := NamedColors.Green
+                DefaultShadowOpacity := 1.0
+                DefaultShadowOffset := option{vector2{X := 1.0, Y := 1.0}}
+                DefaultTextOpacity := {_X := 1.0}
+                DefaultJustification := text_justification.Left
+            }
+            if (set PlayerElimWidgets[Player] = ElimWidget):
+                UpdateElimsHUD(Player)
+    
+            # Horizontal stack for cash icon and text
+            GoldStack := stack_box{
+                Orientation := orientation.Horizontal,
+                Slots := array{
+                    stack_box_slot{
+                        Widget := GoldIconWidget,
+                        HorizontalAlignment := horizontal_alignment.Left,
+                        VerticalAlignment := vertical_alignment.Center
+                    },
+                    stack_box_slot{
+                        Widget := GoldWidget,
+                        HorizontalAlignment := horizontal_alignment.Left,
+                        VerticalAlignment := vertical_alignment.Center
+                    }
+                }
+            }
+
+                        # Horizontal stack for cash icon and text
+            WalkerStack := stack_box{
+                Orientation := orientation.Horizontal,
+                Slots := array{
+                    stack_box_slot{
+                        Widget := WalkerIconWidget,
+                        HorizontalAlignment := horizontal_alignment.Left,
+                        VerticalAlignment := vertical_alignment.Center
+                    },
+                    stack_box_slot{
+                        Widget := ElimWidget,
+                        HorizontalAlignment := horizontal_alignment.Left,
+                        VerticalAlignment := vertical_alignment.Center
+                    }
+                }
+            }
+    
+            # Vertical stack for layout: CashStack on top, ElimWidget below
+            ParentStack := stack_box{
+                Orientation := orientation.Vertical,
+                Slots := array{
+                    stack_box_slot{
+                        Widget := GoldStack,
+                        HorizontalAlignment := horizontal_alignment.Left,
+                        VerticalAlignment := vertical_alignment.Top
+                    },
+
+                    stack_box_slot{
+                        Widget := WalkerStack,
+                        HorizontalAlignment := horizontal_alignment.Left,
+                        VerticalAlignment := vertical_alignment.Top
+                    }
+                }
+            }
+    
+            GoldCanvasSlot := canvas_slot{
+                Widget := ParentStack,
+                Anchors := anchors{Minimum := vector2{X := 0.0, Y := 0.0}, Maximum := vector2{X := 0.33, Y := 0.33}},
+                Alignment := vector2{X := 0.0, Y := 0.0},
+                Offsets := margin{Top := 120.0, Left := 20.0}
+            }
+    
+            GoldCanvas := canvas{
+                Slots := array{GoldCanvasSlot}
+            }
+    
+            PlayerUI.AddWidget(GoldCanvas)
+
+
+
+    # Update the gold HUD for a player
+    UpdateGoldHUD(Player : player) : void =
+        if (GoldWidget := PlayerGoldWidgets[Player], Gold := PlayerGold[Player]):
+            GoldWidget.SetText(StringToMessage("Ca$h: {Gold}$"))
+
+    UpdateElimsHUD(Player : player) : void =
+        if (ElimWidget := PlayerElimWidgets[Player], ElimCount := PlayerElimCounts[Player]):
+            ElimWidget.SetText(StringToMessage("Walker$ Met: {ElimCount}"))
+
+    # Helper to convert string to message
+    StringToMessage<localizes>(InString : string) : message = "{InString}"
+
+
+    # Add gold to player's balance and update HUD
+    AddGold(Player : player, Amount : int) : void =
+        var CurrentGold : int = 0
+        if (ExistingGold := PlayerGold[Player]):
+            set CurrentGold = ExistingGold
+        if (set PlayerGold[Player] = CurrentGold + Amount):
+            UpdateGoldHUD(Player)
+
+
+    # Deduct gold from player and update HUD
+    DeductGold(Player : player, Amount : int) : void =
+        if (CurrentGold := PlayerGold[Player]):
+            if (set PlayerGold[Player] = CurrentGold - Amount):
+                UpdateGoldHUD(Player)
+
+
+
+
+        # Check if player can afford purchase
+    CanAfford(Player : player, Cost : int)<decides><transacts> : void =
+        if (Gold := PlayerGold[Player]):
+            Gold >= Cost
+        else:
+            false?
+
+
+    # Handler for NPC elimination
+    OnNpcEliminated(Result : device_ai_interaction_result) : void =
+        if (Agent := Result.Source?, Player := player[Agent]):
+            AddGold(Player, GoldPerElimination)
+            NPCEliminatedAudio.Play()
+            var CurrentCount : int = 0
+            if (ExistingCount := PlayerElimCounts[Player]):
+                set CurrentCount = ExistingCount
+            if (set PlayerElimCounts[Player] = CurrentCount + 1):
+                UpdateElimsHUD(Player)
+
+
+    # Handler for weapon shop button
+    OnWeaponShopButtonPressed(Agent : agent) : void =
+        if (Player := player[Agent], ButtonIndex := GetButtonIndex[Agent, WeaponShopButtons]):
+            if (Cost := WeaponCosts[ButtonIndex], Granter := WeaponGranters[ButtonIndex]):        
+                if (CanAfford[Player, Cost]):
+                    DeductGold(Player, Cost)
+                    Granter.GrantItem(Agent)
+                else: 
+                    HudMessageNoMoney.Trigger(Agent)
+
+    # Handler for vehicle shop button
+    OnVehicleShopButtonPressed(Agent : agent) : void =
+        if (Player := player[Agent], ButtonIndex := GetButtonIndex[Agent, VehicleShopButtons]):
+            if (Cost := VehicleCosts[ButtonIndex], Spawner := VehicleSpawner[ButtonIndex]):
+                if (CanAfford[Player, Cost]):
+                    DeductGold(Player, Cost)
+                    Spawner.Enable()
+                    Spawner.RespawnVehicle()
+                else:                         
+                    HudMessageNoMoney.Trigger(Agent)
+                    
+
+
+    # Helper to find button index
+    GetButtonIndex(Agent : agent, Buttons : []button_device)<decides><transacts> : int =
+        for (Index -> Button : Buttons):
+            Index
+        0 
+        # Default return if not found# 
+
